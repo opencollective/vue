@@ -70,11 +70,34 @@ describe('Options functional', () => {
       }
     }).$mount()
 
+    document.body.appendChild(vm.$el)
     triggerEvent(vm.$el.children[0], 'click')
     expect(foo).toHaveBeenCalled()
     expect(foo.calls.argsFor(0)[0].type).toBe('click') // should have click event
     triggerEvent(vm.$el.children[0], 'mousedown')
     expect(bar).toHaveBeenCalledWith('bar')
+    document.body.removeChild(vm.$el)
+  })
+
+  it('should expose scopedSlots on render context', () => {
+    const vm = new Vue({
+      template: '<div><wrap>foo<p slot="p" slot-scope="a">{{ a }}</p></wrap></div>',
+      components: {
+        wrap: {
+          functional: true,
+          render (h, { scopedSlots }) {
+            return [
+              // scoped
+              scopedSlots.p('a'),
+              // normal slot content should be exposed as well
+              scopedSlots.default()
+            ]
+          }
+        }
+      }
+    }).$mount()
+
+    expect(vm.$el.textContent).toBe('afoo')
   })
 
   it('should support returning more than one root node', () => {
@@ -184,5 +207,157 @@ describe('Options functional', () => {
     const h = vm.$createElement
     const vnode = h('child')
     expect(vnode).toEqual(createEmptyVNode())
+  })
+
+  // #7282
+  it('should normalize top-level arrays', () => {
+    const Foo = {
+      functional: true,
+      render (h) {
+        return [h('span', 'hi'), null]
+      }
+    }
+    const vm = new Vue({
+      template: `<div><foo/></div>`,
+      components: { Foo }
+    }).$mount()
+    expect(vm.$el.innerHTML).toBe('<span>hi</span>')
+  })
+
+  it('should work when used as named slot and returning array', () => {
+    const Foo = {
+      template: `<div><slot name="test"/></div>`
+    }
+
+    const Bar = {
+      functional: true,
+      render: h => ([
+        h('div', 'one'),
+        h('div', 'two'),
+        h(Baz)
+      ])
+    }
+
+    const Baz = {
+      functional: true,
+      render: h => h('div', 'three')
+    }
+
+    const vm = new Vue({
+      template: `<foo><bar slot="test"/></foo>`,
+      components: { Foo, Bar }
+    }).$mount()
+
+    expect(vm.$el.innerHTML).toBe('<div>one</div><div>two</div><div>three</div>')
+  })
+
+  it('should apply namespace when returning arrays', () => {
+    const Child = {
+      functional: true,
+      render: h => ([h('foo'), h('bar')])
+    }
+    const vm = new Vue({
+      template: `<svg><child/></svg>`,
+      components: { Child }
+    }).$mount()
+
+    expect(vm.$el.childNodes[0].namespaceURI).toContain('svg')
+    expect(vm.$el.childNodes[1].namespaceURI).toContain('svg')
+  })
+
+  it('should work with render fns compiled from template', done => {
+    // code generated via vue-template-es2015-compiler
+    const render = function (_h, _vm) {
+      const _c = _vm._c
+      return _c(
+        'div',
+        [
+          _c('h2', { staticClass: 'red' }, [_vm._v(_vm._s(_vm.props.msg))]),
+          _vm._t('default'),
+          _vm._t('slot2'),
+          _vm._t('scoped', null, { msg: _vm.props.msg }),
+          _vm._m(0),
+          _c('div', { staticClass: 'clickable', on: { click: _vm.parent.fn }}, [
+            _vm._v('click me')
+          ])
+        ],
+        2
+      )
+    }
+    const staticRenderFns = [
+      function (_h, _vm) {
+        const _c = _vm._c
+        return _c('div', [_vm._v('Some '), _c('span', [_vm._v('text')])])
+      }
+    ]
+
+    const child = {
+      functional: true,
+      _compiled: true,
+      render,
+      staticRenderFns
+    }
+
+    const parent = new Vue({
+      components: {
+        child
+      },
+      data: {
+        msg: 'hello'
+      },
+      template: `
+      <div>
+        <child :msg="msg">
+          <span>{{ msg }}</span>
+          <div slot="slot2">Second slot</div>
+          <template slot="scoped" slot-scope="scope">{{ scope.msg }}</template>
+        </child>
+      </div>
+      `,
+      methods: {
+        fn () {
+          this.msg = 'bye'
+        }
+      }
+    }).$mount()
+
+    function assertMarkup () {
+      expect(parent.$el.innerHTML).toBe(
+        `<div>` +
+          `<h2 class="red">${parent.msg}</h2>` +
+          `<span>${parent.msg}</span> ` +
+          `<div>Second slot</div>` +
+          parent.msg +
+          // static
+          `<div>Some <span>text</span></div>` +
+          `<div class="clickable">click me</div>` +
+        `</div>`
+      )
+    }
+
+    assertMarkup()
+    triggerEvent(parent.$el.querySelector('.clickable'), 'click')
+    waitForUpdate(assertMarkup).then(done)
+  })
+
+  // #8468
+  it('should normalize nested arrays when use functional components with v-for', () => {
+    const Foo = {
+      functional: true,
+      props: {
+        name: {}
+      },
+      render (h, context) {
+        return [h('span', 'hi'), h('span', context.props.name)]
+      }
+    }
+    const vm = new Vue({
+      template: `<div><foo v-for="name in names" :name="name" /></div>`,
+      data: {
+        names: ['foo', 'bar']
+      },
+      components: { Foo }
+    }).$mount()
+    expect(vm.$el.innerHTML).toBe('<span>hi</span><span>foo</span><span>hi</span><span>bar</span>')
   })
 })

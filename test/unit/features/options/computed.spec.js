@@ -2,6 +2,8 @@ import Vue from 'vue'
 import testObjectOption from '../../../helpers/test-object-option'
 
 describe('Options computed', () => {
+  testObjectOption('computed')
+
   it('basic usage', done => {
     const vm = new Vue({
       template: '<div>{{ b }}</div>',
@@ -48,8 +50,6 @@ describe('Options computed', () => {
       expect(vm.$el.textContent).toBe('1')
     }).then(done)
   })
-
-  testObjectOption('computed')
 
   it('warn with setter and no getter', () => {
     const vm = new Vue({
@@ -204,6 +204,18 @@ describe('Options computed', () => {
       }
     })
     expect(`computed property "a" is already defined as a prop`).toHaveBeenWarned()
+  })
+
+  it('warn conflict with methods', () => {
+    new Vue({
+      computed: {
+        a: () => 2
+      },
+      methods: {
+        a: () => {}
+      }
+    })
+    expect(`computed property "a" is already defined as a method`).toHaveBeenWarned()
   })
 
   it('rethrow computed error', () => {

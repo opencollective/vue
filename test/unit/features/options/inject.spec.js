@@ -1,8 +1,11 @@
 import Vue from 'vue'
 import { Observer } from 'core/observer/index'
 import { isNative, isObject, hasOwn } from 'core/util/index'
+import testObjectOption from '../../../helpers/test-object-option'
 
 describe('Options provide/inject', () => {
+  testObjectOption('inject')
+
   let injected
   const injectedComp = {
     inject: ['foo', 'bar'],
@@ -185,6 +188,32 @@ describe('Options provide/inject', () => {
       }).$mount()
       expect(vm.$el.textContent).toBe('123')
     })
+
+    it('should merge symbol provide from mixins (functions)', () => {
+      const keyA = Symbol('foo')
+      const keyB = Symbol('bar')
+
+      const mixinA = { provide: () => ({ [keyA]: 'foo' }) }
+      const mixinB = { provide: () => ({ [keyB]: 'bar' }) }
+      const child = {
+        inject: {
+          foo: keyA,
+          bar: keyB
+        },
+        template: `<span/>`,
+        created () {
+          injected = [this.foo, this.bar]
+        }
+      }
+      new Vue({
+        mixins: [mixinA, mixinB],
+        render (h) {
+          return h(child)
+        }
+      }).$mount()
+
+      expect(injected).toEqual(['foo', 'bar'])
+    })
   }
 
   // GitHub issue #5223
@@ -362,7 +391,74 @@ describe('Options provide/inject', () => {
     expect(`Injection "baz" not found`).not.toHaveBeenWarned()
   })
 
-  // GitHub issue #6008
+  it('should not warn when injection key which is not provided is not enumerable', () => {
+    const parent = new Vue({ provide: { foo: 1 }})
+    const inject = { foo: 'foo' }
+    Object.defineProperty(inject, '__ob__', { enumerable: false, value: '__ob__' })
+    new Vue({ parent, inject })
+    expect(`Injection "__ob__" not found`).not.toHaveBeenWarned()
+  })
+
+  // Github issue #6097
+  it('should not warn when injections cannot be found but have default value', () => {
+    const vm = new Vue({})
+    new Vue({
+      parent: vm,
+      inject: {
+        foo: { default: 1 },
+        bar: { default: false },
+        baz: { default: undefined }
+      },
+      created () {
+        injected = [this.foo, this.bar, this.baz]
+      }
+    })
+    expect(injected).toEqual([1, false, undefined])
+  })
+
+  it('should support name alias and default together', () => {
+    const vm = new Vue({
+      provide: {
+        FOO: 2
+      }
+    })
+    new Vue({
+      parent: vm,
+      inject: {
+        foo: { from: 'FOO', default: 1 },
+        bar: { default: false },
+        baz: { default: undefined }
+      },
+      created () {
+        injected = [this.foo, this.bar, this.baz]
+      }
+    })
+    expect(injected).toEqual([2, false, undefined])
+  })
+
+  it('should use provided value even if inject has default', () => {
+    const vm = new Vue({
+      provide: {
+        foo: 1,
+        bar: false,
+        baz: undefined
+      }
+    })
+    new Vue({
+      parent: vm,
+      inject: {
+        foo: { default: 2 },
+        bar: { default: 2 },
+        baz: { default: 2 }
+      },
+      created () {
+        injected = [this.foo, this.bar, this.baz]
+      }
+    })
+    expect(injected).toEqual([1, false, undefined])
+  })
+
+  // Github issue #6008
   it('should merge provide from mixins (objects)', () => {
     const mixinA = { provide: { foo: 'foo' }}
     const mixinB = { provide: { bar: 'bar' }}
@@ -564,5 +660,17 @@ describe('Options provide/inject', () => {
     new Ctor().$mount()
 
     expect(injected).toEqual('foo')
+  })
+
+  // #7284
+  it('should not inject prototype properties', () => {
+    const vm = new Vue({
+      provide: {}
+    })
+    new Vue({
+      parent: vm,
+      inject: ['constructor']
+    })
+    expect(`Injection "constructor" not found`).toHaveBeenWarned()
   })
 })

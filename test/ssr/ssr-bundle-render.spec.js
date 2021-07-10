@@ -75,8 +75,27 @@ function createAssertions (runInNewContext) {
     })
   })
 
+  it('renderToString catch Promise rejection', done => {
+    createRenderer('promise-rejection.js', { runInNewContext }, renderer => {
+      renderer.renderToString(err => {
+        expect(err.message).toBe('foo')
+        done()
+      })
+    })
+  })
+
   it('renderToStream catch error', done => {
     createRenderer('error.js', { runInNewContext }, renderer => {
+      const stream = renderer.renderToStream()
+      stream.on('error', err => {
+        expect(err.message).toBe('foo')
+        done()
+      })
+    })
+  })
+
+  it('renderToStream catch Promise rejection', done => {
+    createRenderer('promise-rejection.js', { runInNewContext }, renderer => {
       const stream = renderer.renderToStream()
       stream.on('error', err => {
         expect(err.message).toBe('foo')
@@ -176,7 +195,7 @@ function createAssertions (runInNewContext) {
   })
 
   it('render with cache (nested)', done => {
-    const cache = LRU({ maxAge: Infinity })
+    const cache = new LRU({ maxAge: Infinity })
     spyOn(cache, 'get').and.callThrough()
     spyOn(cache, 'set').and.callThrough()
     const options = {
@@ -206,6 +225,44 @@ function createAssertions (runInNewContext) {
           expect(cache.get.calls.count()).toBe(2) // 1 get for root
 
           expect(context2.registered).toEqual(['app', 'child', 'grandchild'])
+          done()
+        })
+      })
+    })
+  })
+
+  it('render with cache (opt-out)', done => {
+    const cache = {}
+    const get = jasmine.createSpy('get')
+    const set = jasmine.createSpy('set')
+    const options = {
+      runInNewContext,
+      cache: {
+        // async
+        get: (key, cb) => {
+          setTimeout(() => {
+            get(key)
+            cb(cache[key])
+          }, 0)
+        },
+        set: (key, val) => {
+          set(key, val)
+          cache[key] = val
+        }
+      }
+    }
+    createRenderer('cache-opt-out.js', options, renderer => {
+      const expected = '<div data-server-rendered="true">/test</div>'
+      renderer.renderToString((err, res) => {
+        expect(err).toBeNull()
+        expect(res).toBe(expected)
+        expect(get).not.toHaveBeenCalled()
+        expect(set).not.toHaveBeenCalled()
+        renderer.renderToString((err, res) => {
+          expect(err).toBeNull()
+          expect(res).toBe(expected)
+          expect(get).not.toHaveBeenCalled()
+          expect(set).not.toHaveBeenCalled()
           done()
         })
       })
@@ -253,6 +310,35 @@ function createAssertions (runInNewContext) {
       const stream = renderer.renderToStream()
       stream.on('error', err => {
         expect(err.stack).toContain('test/ssr/fixtures/error.js:1:6')
+        expect(err.message).toBe('foo')
+        done()
+      })
+    })
+  })
+
+  it('renderToString return Promise', done => {
+    createRenderer('app.js', { runInNewContext }, renderer => {
+      const context = { url: '/test' }
+      renderer.renderToString(context).then(res => {
+        expect(res).toBe('<div data-server-rendered="true">/test</div>')
+        expect(context.msg).toBe('hello')
+        done()
+      })
+    })
+  })
+
+  it('renderToString return Promise (error)', done => {
+    createRenderer('error.js', { runInNewContext }, renderer => {
+      renderer.renderToString().catch(err => {
+        expect(err.message).toBe('foo')
+        done()
+      })
+    })
+  })
+
+  it('renderToString return Promise (Promise rejection)', done => {
+    createRenderer('promise-rejection.js', { runInNewContext }, renderer => {
+      renderer.renderToString().catch(err => {
         expect(err.message).toBe('foo')
         done()
       })

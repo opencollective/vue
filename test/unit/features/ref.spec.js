@@ -9,6 +9,10 @@ describe('ref', () => {
     test2: {
       id: 'test2',
       template: '<div>test2</div>'
+    },
+    test3: {
+      id: 'test3',
+      template: '<div>test3</div>'
     }
   }
 
@@ -20,6 +24,7 @@ describe('ref', () => {
       template: `<div>
         <test ref="foo"></test>
         <test2 :ref="value"></test2>
+        <test3 :ref="0"></test3>
       </div>`,
       components
     })
@@ -28,6 +33,8 @@ describe('ref', () => {
     expect(vm.$refs.foo.$options.id).toBe('test')
     expect(vm.$refs.bar).toBeTruthy()
     expect(vm.$refs.bar.$options.id).toBe('test2')
+    expect(vm.$refs['0']).toBeTruthy()
+    expect(vm.$refs['0'].$options.id).toBe('test3')
   })
 
   it('should dynamically update refs', done => {
@@ -196,15 +203,25 @@ describe('ref', () => {
     }
   })
 
-  it('should register on component with empty roots', () => {
+  it('should register on component with empty roots', done => {
     const vm = new Vue({
       template: '<child ref="test"></child>',
       components: {
         child: {
-          template: '<div v-if="false"></div>'
+          template: '<div v-if="show"></div>',
+          data () {
+            return { show: false }
+          }
         }
       }
     }).$mount()
     expect(vm.$refs.test).toBe(vm.$children[0])
+    vm.$refs.test.show = true
+    waitForUpdate(() => {
+      expect(vm.$refs.test).toBe(vm.$children[0])
+      vm.$refs.test.show = false
+    }).then(() => {
+      expect(vm.$refs.test).toBe(vm.$children[0])
+    }).then(done)
   })
 })
